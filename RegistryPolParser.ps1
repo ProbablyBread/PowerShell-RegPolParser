@@ -129,4 +129,6 @@ function ParseRegPol([string]$file) {
             $lines += ParseEntry $reg[$($startPos + 1)..$($endPos - 1)] # pass slice without [ and ]
         }
     }
+
+    return $lines
 }
