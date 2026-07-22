@@ -73,7 +73,7 @@ function ParseEntry($part) {
     [string]$str = $null
     
     for ($i = 0; $i -lt $part.Length; $i++) {
-        if ($part[$i] -ne 59 -and $part[$i + 1] -ne 0) {
+        if ($part[$i] -ne 59 -or $part[$i + 1] -ne 0) {
             $byteArray += $part[$i]
         }
         else {
