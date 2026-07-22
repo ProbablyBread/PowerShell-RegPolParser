@@ -108,7 +108,6 @@ function ParseEntry($part) {
 }
 
 function ParseRegPol([string]$file) {
-    $file = ".\w11_ent_bitlocker_registry.pol"
     $reg = Get-Content -Raw $file -Encoding Byte
 
     $startPos = 0 # store $reg start index
