@@ -119,7 +119,7 @@ function ParseRegPol([string]$file) {
     # 59 = ;
     # 91 = [
     # 93 = ]
-    for ($i = 8; $i -lt ($reg.Length - 1); $i++) {
+    for ($i = 8; $i -lt $reg.Length; $i++) {
         if ($reg[$i] -eq 91) {
             $startPos = $i
         }
