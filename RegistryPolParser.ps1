@@ -48,7 +48,7 @@ function ReturnStringFromBytes($part) {
     $ctrlCodes += 127..159
     [string]$str = $null
 
-    foreach ($c in $byteArray) {
+    foreach ($c in $part) {
         if ($c -notin $ctrlCodes) {
             $str += [char][byte]$c
         }
