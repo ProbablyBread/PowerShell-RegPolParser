@@ -1,21 +1,29 @@
 function ReturnData($byteArr, $type) {
     # compute actual decimal data if DWORD/QWORD
-    if ($type -eq "REG_DWORD" -or $type -eq "REG_DWORD_BIG_ENDIAN" -or $type -eq "REG_QWORD") {
-        foreach ($i in $byteArr) {
-            $data += $i 
+    if ($type -eq "REG_DWORD" -or $type -eq "REG_QWORD") {
+        $data = 0
+        for ($i = 0; $i -lt $byteArr.Length; $i++) {
+            $data = $data -bor ([int]$byteArr[$i] -shl (8 * $i))
+        }
+    }
+    elseif ($type -eq "REG_DWORD_BIG_ENDIAN") {
+        $data = 0
+        $length = $byteArr.Length
+        for ($i = 0; $i -lt $length; $i++) {
+            $data = $data -bor ([int]$byteArr[$length - 1 - $i] -shl (8 * $i))
         }
     }
     # otherwise return a string
     else {
-        $data = ReturnStringFromBytes $byteArr 
+        $data = ReturnStringFromBytes $byteArr
     }
 
     return $data
 }
 
 function ReturnSize($byteArr) {
-    foreach ($i in $byteArr) {
-        $size += $i
+    for ($i = 0; $i -lt $length; $i++) {
+        $size = $size -bor ([int]$byteArr[$i] -shl (8 * $i))
     }
 
     return $size
@@ -65,7 +73,7 @@ function ParseEntry($part) {
     [string]$str = $null
     
     for ($i = 0; $i -lt $part.Length; $i++) {
-        if ($part[$i] -ne 59) {
+        if ($part[$i] -ne 59 -and $part[$i + 1] -ne 0) {
             $byteArray += $part[$i]
         }
         else {
@@ -120,10 +128,10 @@ function ParseRegPol([string]$file) {
     # 91 = [
     # 93 = ]
     for ($i = 8; $i -lt $reg.Length; $i++) {
-        if ($reg[$i] -eq 91) {
+        if ($reg[$i] -eq 91 -and $reg[$i + 1] -eq 0) {
             $startPos = $i
         }
-        elseif ($reg[$i] -eq 93) {
+        elseif ($reg[$i] -eq 93 -and $reg[$i + 1] -eq 0) {
             $endPos = $i
             $lines += ParseEntry $reg[$($startPos + 1)..$($endPos - 1)] # pass slice without [ and ]
         }
