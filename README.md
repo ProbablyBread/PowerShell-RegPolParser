@@ -1,7 +1,7 @@
 # PowerShell-RegPolParser
 Bunch of functions to parse registry.pol files from Group Policies into human readable formats. Returns an array of strings in the format of \[Key;Value;Type;Size;Data\]. 
 
-Work in progress - parsing for REG_MULTI_SZ is not implemented yet
+Work in progress - parsing for REG_MULTI_SZ and REG_BINARY is not implemented yet
 
 ## References
 - [Registry Policy File Format (learn.microsoft.com)](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/policy/registry-policy-file-format)
