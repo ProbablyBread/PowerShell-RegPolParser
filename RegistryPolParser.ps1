@@ -99,6 +99,10 @@ function ParseRegPol([string]$file) {
     elseif ($PSVersionTable.PSVersion.Major -ge 6) {
         $byteArray = Get-Content -Raw -AsByteStream -Path "$file"
     }
+    else {
+        Write-Host "Unsupported PowerShell version."
+        return 1
+    }
 
     $lines = @()
 
