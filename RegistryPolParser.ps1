@@ -93,7 +93,13 @@ function ByteArrayToString([Array]$byteArray) {
 }
 
 function ParseRegPol([string]$file) {
-    $byteArray = Get-Content -Raw -Encoding Byte -Path "$file"
+    if ($PSVersionTable.PSVersion.Major -eq 5) {
+        $byteArray = Get-Content -Raw -Encoding Byte -Path "$file"
+    }
+    elseif ($PSVersionTable.PSVersion.Major -ge 6) {
+        $byteArray = Get-Content -Raw -AsByteStream -Path "$file"
+    }
+    
     $lines = @()
 
     if (-not ($(ParseHeader $byteArray))) {
