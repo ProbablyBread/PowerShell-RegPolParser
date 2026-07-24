@@ -6,7 +6,7 @@ Work in progress - parsing for REG_MULTI_SZ and REG_BINARY is not implemented ye
 ## References
 - [Registry Policy File Format (learn.microsoft.com)](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/policy/registry-policy-file-format)
 - [Corrections to Microsoft documentation about the Registry Policy (registry.pol) File Format (aaron-margosis.medium.com)](https://aaron-margosis.medium.com/corrections-to-microsoft-documentation-about-the-registry-policy-file-format-f6cb0caa9a80)
-- [Registry value types (learn.microsoft.com)]([url](https://learn.microsoft.com/en-us/windows/win32/sysinfo/registry-value-types))
+- [Registry value types (learn.microsoft.com)](https://learn.microsoft.com/en-us/windows/win32/sysinfo/registry-value-types)
 
 ## Usage
 ```powershell
