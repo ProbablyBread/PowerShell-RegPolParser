@@ -1,7 +1,7 @@
 function ParseHeader([Array]$byteArray) {
     # read first 8 bytes of $byteArray (header) and ensure it is a .pol file
     # header should be 80 82 101 103 01 00 00 00
-    for ($i = 0; $i -lt 9; $i++) {
+    for ($i = 0; $i -lt 7; $i++) {
         switch ($i) {
             0 {
                 if ($byteArray[$i] -ne 80) { return $false }
@@ -59,7 +59,7 @@ function TypeToString([Array]$byteArray) {
     }
 }
 
-function ByteArrayToInt([Array]$byteArray) {
+function ByteArrayToLong([Array]$byteArray) {
     [long]$num = 0
 
     for ($i = 0; $i -lt $byteArray.Length; $i++) {
@@ -69,14 +69,14 @@ function ByteArrayToInt([Array]$byteArray) {
     return $num
 }
 
-function BEByteArrayToInt([Array]$byteArray) {
+function BEByteArrayToLong([Array]$byteArray) {
     [Array]$rev = @()
 
     for ($i = $byteArray.Length - 1; $i -ge 0; $i--) {
         $rev += $byteArray[$i]
     }
 
-    return ByteArrayToInt $rev
+    return ByteArrayToLong $rev
 }
 
 function ByteArrayToString([Array]$byteArray) {
@@ -99,7 +99,7 @@ function ParseRegPol([string]$file) {
     elseif ($PSVersionTable.PSVersion.Major -ge 6) {
         $byteArray = Get-Content -Raw -AsByteStream -Path "$file"
     }
-    
+
     $lines = @()
 
     if (-not ($(ParseHeader $byteArray))) {
@@ -180,7 +180,7 @@ function ParseRegPol([string]$file) {
             }
             
             $i += 4 # skip 4 bytes read
-            $size = ByteArrayToInt $sizeSlice
+            $size = ByteArrayToLong $sizeSlice
         }
         else {
             Write-Host "Invalid .pol file supplied."
@@ -199,13 +199,16 @@ function ParseRegPol([string]$file) {
             $i += $size # skip size bytes read
 
             if ($typeString -eq "REG_DWORD" -or $typeString -eq "REG_QWORD") {
-                $dataString = ByteArrayToInt $dataSlice
+                $dataString = ByteArrayToLong $dataSlice
             }
-            elseif ($typeString -eq "REG_DWORD_BIG_ENDIAN") {
-                $dataString = BEByteArrayToInt $dataSlice
+            elseif ($typeString -eq "REG_DWORD_BIG_ENDIAN" -or $typeString -eq "REG_QWORD_BIG_ENDIAN") {
+                $dataString = BEByteArrayToLong $dataSlice
             }
-            else {
+            elseif ($typeString -eq "REG_SZ" -or $typeString -eq "REG_EXPAND_SZ" -or $typeString -eq "REG_LINK") {
                 $dataString = ByteArrayToString $dataSlice
+            }
+            elseif ($typeString -eq "REG_MULTI_SZ") {
+                Write-Host "Work in progress"
             }
         }
         else {
