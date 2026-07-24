@@ -1,40 +1,49 @@
-function ReturnData($byteArr, $type) {
-    # compute actual decimal data if DWORD/QWORD
-    if ($type -eq "REG_DWORD" -or $type -eq "REG_QWORD") {
-        $data = 0
-        for ($i = 0; $i -lt $byteArr.Length; $i++) {
-            $data = $data -bor ([int]$byteArr[$i] -shl (8 * $i))
+function ParseHeader([Array]$byteArray) {
+    # read first 8 bytes of $byteArray (header) and ensure it is a .pol file
+    # header should be 80 82 101 103 01 00 00 00
+    for ($i = 0; $i -lt 9; $i++) {
+        switch ($i) {
+            0 {
+                if ($byteArray[$i] -ne 80) { return $false }
+                break
+            }
+            1 {
+                if ($byteArray[$i] -ne 82) { return $false }
+                break
+            }
+            2 {
+                if ($byteArray[$i] -ne 101) { return $false }
+                break
+            }
+            3 {
+                if ($byteArray[$i] -ne 103) { return $false }
+                break
+            }
+            4 {
+                if ($byteArray[$i] -ne 1) { return $false }
+                break
+            }
+            5 {
+                if ($byteArray[$i] -ne 0) { return $false }
+                break
+            }
+            6 {
+                if ($byteArray[$i] -ne 0) { return $false }
+                break
+            }
+            7 {
+                if ($byteArray[$i] -ne 0) { return $false }
+                break
+            }
         }
     }
-    elseif ($type -eq "REG_DWORD_BIG_ENDIAN") {
-        $data = 0
-        $length = $byteArr.Length
-        for ($i = 0; $i -lt $length; $i++) {
-            $data = $data -bor ([int]$byteArr[$length - 1 - $i] -shl (8 * $i))
-        }
-    }
-    # otherwise return a string
-    else {
-        $data = ReturnStringFromBytes $byteArr
-    }
 
-    return $data
+    return $true
 }
 
-function ReturnSize($byteArr) {
-    for ($i = 0; $i -lt $length; $i++) {
-        $size = $size -bor ([int]$byteArr[$i] -shl (8 * $i))
-    }
-
-    return $size
-}
-
-function ReturnRegType($byteArr) {
-    foreach ($i in $byteArr) {
-        $int += $i
-    }
-
-    switch ($int) {
+function TypeToString([Array]$byteArray) {
+    # only the first byte matters since it's always < 255
+    switch ($byteArray[0]) {
         0 { return "REG_NONE" }
         1 { return "REG_SZ" }
         2 { return "REG_EXPAND_SZ" }
@@ -50,91 +59,164 @@ function ReturnRegType($byteArr) {
     }
 }
 
-function ReturnStringFromBytes($part) {    
-    # unicode control codes to ignore
-    $ctrlCodes = 0..31 
-    $ctrlCodes += 127..159
-    [string]$str = $null
+function ByteArrayToInt([Array]$byteArray) {
+    [long]$num = 0
 
-    foreach ($c in $part) {
-        if ($c -notin $ctrlCodes) {
-            $str += [char][byte]$c
-        }
+    for ($i = 0; $i -lt $byteArray.Length; $i++) {
+        $num += $byteArray[$i] * [Math]::Pow(256, $i)
     }
 
-    return $str
+    return $num
 }
 
-function ParseEntry($part) {
-    $counter = 0 # tracks the part currently extracted (key;value;type;size;data)
-    $byteArray = @() 
-    $type = $null
-    
-    [string]$str = $null
-    
-    for ($i = 0; $i -lt $part.Length; $i++) {
-        if ($part[$i] -ne 59 -or $part[$i + 1] -ne 0) {
-            $byteArray += $part[$i]
-        }
-        else {
-            $counter++
-            
-            switch ($counter) {
-                # key
-                1 {
-                    $str += ReturnStringFromBytes $byteArray
-                    $str += ";"
-                }
+function BEByteArrayToInt([Array]$byteArray) {
+    [Array]$rev = @()
 
-                # value
-                2 {
-                    $str += ReturnStringFromBytes $byteArray
-                    $str += ";"
-                }
+    for ($i = $byteArray.Length - 1; $i -ge 0; $i--) {
+        $rev += $byteArray[$i]
+    }
 
-                # type
-                3 {
-                    $type = ReturnRegType($byteArray)
-                    $str += $type 
-                    $str += ";"
-                }
+    return ByteArrayToInt $rev
+}
 
-                # size
-                4 {
-                    $str += ReturnSize($byteArray)
-                    $str += ";"
-                }
-            }
+function ByteArrayToString([Array]$byteArray) {
+    [string]$string = $null
 
-            $byteArray = @()
+    foreach ($b in $byteArray) {
+        # skip null bytes
+        if ($b -gt 0) {
+            $string += [char][byte]$b  
         }
     }
 
-    # data
-    $str += ReturnData $byteArray $type
-    return $str
+    return $string
 }
 
 function ParseRegPol([string]$file) {
-    $reg = Get-Content -Raw $file -Encoding Byte
+    $byteArray = Get-Content -Raw -Encoding Byte -Path "$file"
+    $lines = @()
 
-    $startPos = 0 # store $reg start index
-    $endPos = 0 # store $reg end index
+    if (-not ($(ParseHeader $byteArray))) {
+        Write-Host "Invalid .pol file supplied."
+        return 1
+    }
 
-    $lines = @() # array of lines extracted
+    # read two bytes at once, skipping the header
+    for ($i = 8; $i -lt $byteArray.Length - 1; ) {
+        $keySlice = @()
+        $valueSlice = @()
+        $typeSlice = @()
+        $sizeSlice = @()
+        $dataSlice = @()
+        
+        # slice key (from 91 00 ([) to 00 00 - null terminated string)
+        if ($byteArray[$i] -eq 91 -and $byteArray[$i + 1] -eq 0) {
+            $i += 2 # read from next 2 bytes
 
-    # start from index 8 (ignore first 8 header bytes)
-    # 59 = ;
-    # 91 = [
-    # 93 = ]
-    for ($i = 8; $i -lt $reg.Length; $i++) {
-        if ($reg[$i] -eq 91 -and $reg[$i + 1] -eq 0) {
-            $startPos = $i
+            # look for null terminator
+            while (-not($byteArray[$i] -eq 0 -and $byteArray[$i + 1] -eq 0)) {
+                $keySlice += $byteArray[$i]
+                $keySlice += $byteArray[$i + 1]
+                $i += 2
+            }
+
+            $i += 2 # increment by 2 to skip null bytes
+            $keyString = ByteArrayToString $keySlice
         }
-        elseif ($reg[$i] -eq 93 -and $reg[$i + 1] -eq 0) {
-            $endPos = $i
-            $lines += ParseEntry $reg[$($startPos + 1)..$($endPos - 1)] # pass slice without [ and ]
+        else {
+            Write-Host "Invalid .pol file supplied."
+            return 1
         }
+
+        # slice value (check two bytes for ;) and read to next 00 00 - null terminated string)
+        if ($byteArray[$i] -eq 59 -and $byteArray[$i + 1] -eq 0) {
+            $i += 2 # read from next 2 bytes
+
+            # look for null terminator
+            while (-not($byteArray[$i] -eq 0 -and $byteArray[$i + 1] -eq 0)) {
+                $valueSlice += $byteArray[$i]
+                $valueSlice += $byteArray[$i + 1]
+                $i += 2
+            }
+
+            $i += 2 # increment by 2 to skip null bytes
+            $valueString = ByteArrayToString $valueSlice
+        }
+        else {
+            Write-Host "Invalid .pol file supplied."
+            return 1
+        }
+
+        # slice 4 bytes for type (check two bytes for ;)
+        if ($byteArray[$i] -eq 59 -and $byteArray[$i + 1] -eq 0) {
+            $i += 2 # read from next 2 bytes
+
+            # read 4 bytes
+            for ($j = 0; $j -lt 4; $j++) {
+                $typeSlice += $byteArray[$i + $j]
+            }
+
+            $i += 4 # skip 4 bytes read
+            $typeString = TypeToString $typeSlice
+        }
+        else {
+            Write-Host "Invalid .pol file supplied."
+            return 1
+        }
+
+        # slice 4 bytes for size (check two bytes for ;)
+        if ($byteArray[$i] -eq 59 -and $byteArray[$i + 1] -eq 0) {
+            $i += 2 # read from next 2 bytes
+
+            # read 4 bytes
+            for ($j = 0; $j -lt 4; $j++) {
+                $sizeSlice += $byteArray[$i + $j]
+            }
+            
+            $i += 4 # skip 4 bytes read
+            $size = ByteArrayToInt $sizeSlice
+        }
+        else {
+            Write-Host "Invalid .pol file supplied."
+            return 1
+        }
+
+        # read size bytes (check two bytes for ;)
+        if ($byteArray[$i] -eq 59 -and $byteArray[$i + 1] -eq 0) {
+            $i += 2 # read from next 2 bytes
+
+            # consume size bytes
+            for ($j = 0; $j -lt $size; $j++) {
+                $dataSlice += $byteArray[$i + $j]
+            }
+
+            $i += $size # skip size bytes read
+
+            if ($typeString -eq "REG_DWORD" -or $typeString -eq "REG_QWORD") {
+                $dataString = ByteArrayToInt $dataSlice
+            }
+            elseif ($typeString -eq "REG_DWORD_BIG_ENDIAN") {
+                $dataString = BEByteArrayToInt $dataSlice
+            }
+            else {
+                $dataString = ByteArrayToString $dataSlice
+            }
+        }
+        else {
+            Write-Host "Invalid .pol file supplied."
+            return 1
+        }
+
+        # read next two bytes to check for closing 93 00 (])
+        if ($byteArray[$i] -eq 93 -and $byteArray[$i + 1] -eq 0) {
+            $i += 2 # skip those two bytes and loop again
+        }
+        else {
+            Write-Host "Invalid .pol file supplied."
+            return 1
+        }
+
+        $lines += "[$keyString;$valueString;$typeString;$size;$dataString]"
     }
 
     return $lines
