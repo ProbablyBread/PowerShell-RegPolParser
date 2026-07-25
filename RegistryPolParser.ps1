@@ -1,9 +1,10 @@
 function ParseHeader([Array]$byteArray) {
     # read first 8 bytes of $byteArray (header) and ensure it is a .pol file
-    # header should be 80 82 101 103 01 00 00 00
+    # signature = 80 82 101 103, this must match exactly
+    # file version = next 4 bytes, only perform basic sanity checks
     for ($i = 0; $i -lt 7; $i++) {
         switch ($i) {
-            0 {
+            0 { # signature check
                 if ($byteArray[$i] -ne 80) { return $false }
                 break
             }
@@ -18,30 +19,30 @@ function ParseHeader([Array]$byteArray) {
             3 {
                 if ($byteArray[$i] -ne 103) { return $false }
                 break
-            }
-            4 {
-                if ($byteArray[$i] -ne 1) { return $false }
+            } # signature check ends here
+            4 { # version check
+                if ($byteArray[$i] -lt 1) { return $false }
                 break
-            }
-            5 {
-                if ($byteArray[$i] -ne 0) { return $false }
+            } 
+            5 { 
+                if ($byteArray[$i] -lt 0) { return $false }
                 break
             }
             6 {
-                if ($byteArray[$i] -ne 0) { return $false }
+                if ($byteArray[$i] -lt 0) { return $false }
                 break
             }
             7 {
-                if ($byteArray[$i] -ne 0) { return $false }
+                if ($byteArray[$i] -lt 0) { return $false }
                 break
-            }
+            } # version check ends here
         }
     }
 
     return $true
 }
 
-function TypeToString([Array]$byteArray) {
+function ConvertTypeSlice([Array]$byteArray) {
     # only the first byte matters since it's always < 255
     switch ($byteArray[0]) {
         0 { return "REG_NONE" }
@@ -59,7 +60,7 @@ function TypeToString([Array]$byteArray) {
     }
 }
 
-function ByteArrayToLong([Array]$byteArray) {
+function ConvertToLong([Array]$byteArray) {
     [long]$num = 0
 
     for ($i = 0; $i -lt $byteArray.Length; $i++) {
@@ -69,17 +70,17 @@ function ByteArrayToLong([Array]$byteArray) {
     return $num
 }
 
-function BEByteArrayToLong([Array]$byteArray) {
+function BEConvertToLong([Array]$byteArray) {
     [Array]$rev = @()
 
     for ($i = $byteArray.Length - 1; $i -ge 0; $i--) {
         $rev += $byteArray[$i]
     }
 
-    return ByteArrayToLong $rev
+    return ConvertToLong $rev
 }
 
-function ByteArrayToString([Array]$byteArray) {
+function ConvertString([Array]$byteArray) {
     [string]$string = $null
 
     foreach ($b in $byteArray) {
@@ -92,12 +93,45 @@ function ByteArrayToString([Array]$byteArray) {
     return $string
 }
 
+function ConvertMultiString([Array]$byteArray) {
+    [string]$string = $null
+
+    for ($i = 0; $i -lt $byteArray.Length; ) {
+        # read until null terminator
+        while (-not($byteArray[$i] -eq 0 -and $byteArray[$i + 1] -eq 0)) {
+            $string += [char][byte]$byteArray[$i] # add only first byte, discard second null byte
+            $i += 2 # increment by 2
+        }
+
+        $i += 2 # skip null terminator
+
+        # end of MULTI_SZ is another null terminator
+        # if it's not the end of the MULTI_SZ, add a comma instead
+        if (-not($byteArray[$i] -eq 0 -and $byteArray[$i + 1] -eq 0)) {
+            $string += "," # separate strings by commas
+        }
+        else {
+            return $string
+        }
+    }
+}
+
+function ConvertBinary([Array]$byteArray) {
+    [string]$string = "hex:"
+    
+    foreach ($b in $byteArray) {
+        $string += [byte]$b.ToString("X") # convert to hex
+    }
+
+    return $string
+}
+
 function ParseRegPol([string]$file) {
     if ($PSVersionTable.PSVersion.Major -eq 5) {
-        $byteArray = Get-Content -Raw -Encoding Byte -Path "$file"
+        $byteArray = Get-Content -Raw -Encoding Byte -Path "$file" -ErrorAction Stop
     }
     elseif ($PSVersionTable.PSVersion.Major -ge 6) {
-        $byteArray = Get-Content -Raw -AsByteStream -Path "$file"
+        $byteArray = Get-Content -Raw -AsByteStream -Path "$file" -ErrorAction Stop
     }
     else {
         Write-Host "Unsupported PowerShell version."
@@ -105,6 +139,11 @@ function ParseRegPol([string]$file) {
     }
 
     $lines = @()
+
+    if ($byteArray.Length -eq 0) {
+        Write-Host "Invalid .pol file supplied."
+        return 1
+    }
 
     if (-not ($(ParseHeader $byteArray))) {
         Write-Host "Invalid .pol file supplied."
@@ -131,7 +170,7 @@ function ParseRegPol([string]$file) {
             }
 
             $i += 2 # increment by 2 to skip null bytes
-            $keyString = ByteArrayToString $keySlice
+            $keyString = ConvertString $keySlice
         }
         else {
             Write-Host "Invalid .pol file supplied."
@@ -150,7 +189,7 @@ function ParseRegPol([string]$file) {
             }
 
             $i += 2 # increment by 2 to skip null bytes
-            $valueString = ByteArrayToString $valueSlice
+            $valueString = ConvertString $valueSlice
         }
         else {
             Write-Host "Invalid .pol file supplied."
@@ -167,7 +206,7 @@ function ParseRegPol([string]$file) {
             }
 
             $i += 4 # skip 4 bytes read
-            $typeString = TypeToString $typeSlice
+            $typeString = ConvertTypeSlice $typeSlice
         }
         else {
             Write-Host "Invalid .pol file supplied."
@@ -184,7 +223,7 @@ function ParseRegPol([string]$file) {
             }
             
             $i += 4 # skip 4 bytes read
-            $size = ByteArrayToLong $sizeSlice
+            $size = ConvertToLong $sizeSlice
         }
         else {
             Write-Host "Invalid .pol file supplied."
@@ -203,16 +242,23 @@ function ParseRegPol([string]$file) {
             $i += $size # skip size bytes read
 
             if ($typeString -eq "REG_DWORD" -or $typeString -eq "REG_QWORD") {
-                $dataString = ByteArrayToLong $dataSlice
+                $dataString = ConvertToLong $dataSlice
             }
             elseif ($typeString -eq "REG_DWORD_BIG_ENDIAN" -or $typeString -eq "REG_QWORD_BIG_ENDIAN") {
-                $dataString = BEByteArrayToLong $dataSlice
+                $dataString = BEConvertToLong $dataSlice
             }
             elseif ($typeString -eq "REG_SZ" -or $typeString -eq "REG_EXPAND_SZ" -or $typeString -eq "REG_LINK") {
-                $dataString = ByteArrayToString $dataSlice
+                $dataString = ConvertString $dataSlice
             }
             elseif ($typeString -eq "REG_MULTI_SZ") {
-                Write-Host "Work in progress"
+                $dataString = ConvertMultiString $dataSlice
+            }
+            elseif ($typeString -eq "REG_BINARY") {
+                $dataString = ConvertBinary $dataSlice
+            }
+            # don't handle REG_NONE and resource types
+            else {
+                $dataString = $null
             }
         }
         else {
@@ -223,13 +269,12 @@ function ParseRegPol([string]$file) {
         # read next two bytes to check for closing 93 00 (])
         if ($byteArray[$i] -eq 93 -and $byteArray[$i + 1] -eq 0) {
             $i += 2 # skip those two bytes and loop again
+            $lines += "[$keyString;$valueString;$typeString;$size;$dataString]"
         }
         else {
             Write-Host "Invalid .pol file supplied."
             return 1
         }
-
-        $lines += "[$keyString;$valueString;$typeString;$size;$dataString]"
     }
 
     return $lines
